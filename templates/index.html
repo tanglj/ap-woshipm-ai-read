@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人人都是产品经理 - AI 专栏</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23667eea;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%23764ba2;stop-opacity:1' /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='12' fill='url(%23grad)'/%3E%3Cpath d='M16 20 L32 28 L48 20 L48 44 L32 52 L16 44 Z' fill='white' opacity='0.9'/%3E%3Ccircle cx='32' cy='36' r='8' fill='%23f1c40f'/%3E%3Ctext x='32' y='40' font-family='Arial, sans-serif' font-size='12' font-weight='bold' text-anchor='middle' fill='white'%3EAI%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- 评分详情弹窗 -->
+    <div id="score-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 文章评分详情</h2>
+                <span class="close-btn" onclick="closeScoreModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="score-details-content">
+                <!-- 评分详情内容将在这里动态加载 -->
+            </div>
+        </div>
+
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>📚 人人都是产品经理 - AI 专栏</h1>
+            <div class="stats">
+                <span class="stat-item">总计: <strong id="total-count">0</strong></span>
+                <span class="stat-item">已读: <strong id="read-count">0</strong></span>
+                <span class="stat-item">未读: <strong id="unread-count">0</strong></span>
+                <span class="stat-item">下次更新: <strong id="next-update">加载中...</strong></span>
+            </div>
+            <div class="actions">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="auto-score" checked>
+                    <span>自动评价新增文章</span>
+                </label>
+                <div class="action-group">
+                    <button class="update-btn" onclick="manualUpdate()">
+                        🔄 立即更新
+                    </button>
+                    <span class="action-desc">抓取前 3 页最新文章</span>
+                </div>
+                <div class="action-group">
+                    <button class="update-btn catchup-btn" onclick="manualCatchup()">
+                        📥 补齐历史数据
+                    </button>
+                    <span class="action-desc">抓取多页历史文章（可设置日期范围）</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="filters">
+            <button class="filter-btn {{ 'active' if show_marked == 'all' else '' }}" onclick="filterArticles('all')">
+                全部文章
+            </button>
+            <button class="filter-btn {{ 'active' if show_marked == 'marked' else '' }}" onclick="filterArticles('marked')">
+                ⭐ 标记文章
+            </button>
+        </div>
+
+        <div class="articles-list">
+            {% for article in articles %}
+            <div class="article-card {{ 'marked' if article.read else 'unmarked' }}" id="article-{{ loop.index }}">
+                <div class="article-header">
+                    <input type="checkbox"
+                           class="read-checkbox"
+                           {{ 'checked' if article.read else '' }}
+                           onchange="toggleRead('{{ article.link }}', this)">
+                    <h2 class="article-title">
+                        <a href="{{ article.link }}" target="_blank">
+                            {{ article.title }}
+                        </a>
+                    </h2>
+                </div>
+                <div class="article-meta">
+                    <span class="meta-item">📅 {{ article.time }}</span>
+                    <span class="meta-item">📝 {{ article.length }} 字</span>
+                    {% if article.score %}
+                    <span class="meta-item score-display">🎯 评分: <strong>{{ article.score }}</strong>/5</span>
+                    {% endif %}
+                </div>
+                <div class="article-desc">{{ article.desc }}</div>
+                <div class="article-note" id="note-display-{{ loop.index }}">
+                    <!-- 笔记内容将通过 JavaScript 加载 -->
+                </div>
+                <div class="article-note-editor" id="note-editor-{{ loop.index }}" style="display: none;">
+                    <textarea 
+                        class="note-textarea" 
+                        id="note-textarea-{{ loop.index }}" 
+                        placeholder="在此输入你的阅读笔记..."
+                        rows="4"
+                    ></textarea>
+                    <div class="note-actions">
+                        <button class="note-btn save-note-btn" onclick="saveNote('{{ article.link }}', {{ loop.index }})">
+                            💾 保存笔记
+                        </button>
+                        <button class="note-btn cancel-note-btn" onclick="cancelNote({{ loop.index }})">
+                            ❌ 取消
+                        </button>
+                        <button class="note-btn delete-note-btn" onclick="deleteNote('{{ article.link }}', {{ loop.index }})" style="display: none;">
+                            🗑️ 删除笔记
+                        </button>
+                    </div>
+                </div>
+                <div class="article-actions">
+                    <button class="note-btn toggle-note-btn" onclick="toggleNoteEditor('{{ article.link }}', {{ loop.index }})">
+                        📝 笔记
+                    </button>
+                    {% if article.score %}
+                    <button class="score-btn" onclick="showScoreDetails('{{ article.link }}')">
+                        查看评分详情
+                    </button>
+                    <button class="score-btn re-score-btn" onclick="evaluateArticle('{{ article.link }}', '{{ article.title }}')">
+                        🔄 重新评分
+                    </button>
+                    {% else %}
+                    <button class="score-btn" onclick="evaluateArticle('{{ article.link }}', '{{ article.title }}')">
+                        AI 评分
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- 分页 -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if current_page > 1 %}
+            <button class="page-btn" onclick="goToPage({{ current_page - 1 }})">
+                上一页
+            </button>
+            {% endif %}
+
+            <div class="page-numbers">
+                {% for page_num in page_range %}
+                    {% if page_num == current_page %}
+                    <button class="page-btn active">{{ page_num }}</button>
+                    {% elif page_num == '...' %}
+                    <span class="page-ellipsis">...</span>
+                    {% else %}
+                    <button class="page-btn" onclick="goToPage({{ page_num }})">{{ page_num }}</button>
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            {% if current_page < total_pages %}
+            <button class="page-btn" onclick="goToPage({{ current_page + 1 }})">
+                下一页
+            </button>
+            {% endif %}
+
+            <div class="page-info">
+                第 {{ current_page }} / {{ total_pages }} 页
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // 加载统计数据
+        function loadStats() {
+            fetch('/stats')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('total-count').textContent = data.total;
+                    document.getElementById('read-count').textContent = data.read;
+                    document.getElementById('unread-count').textContent = data.unread;
+                });
+        }
+
+        // 加载服务状态
+        function loadStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.next_update) {
+                        document.getElementById('next-update').textContent = data.next_update;
+                    } else {
+                        document.getElementById('next-update').textContent = '未设置';
+                    }
+                });
+        }
+
+// 手动更新
+function manualUpdate() {
+    if (!confirm('确定要立即更新文章数据吗？')) {
+        return;
+    }
+
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ 更新中...';
+
+    const autoScore = document.getElementById('auto-score').checked;
+
+    fetch('/update_now', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            auto_score: autoScore
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 轮询检查更新是否完成
+            let checkCount = 0;
+            const maxChecks = 60; // 最多检查 60 次（约 2 分钟）
+            const checkInterval = setInterval(() => {
+                checkCount++;
+                fetch('/stats')
+                    .then(response => response.json())
+                    .then(stats => {
+                        // 显示更新进度
+                        btn.textContent = `⏳ 更新中... (${checkCount * 2}s)`;
+
+                        // 如果检查次数超过限制，停止轮询并刷新
+                        if (checkCount >= maxChecks) {
+                            clearInterval(checkInterval);
+                            location.reload();
+                        }
+                    })
+                    .catch(() => {
+                        // 如果出错，停止轮询并刷新
+                        clearInterval(checkInterval);
+                        location.reload();
+                    });
+            }, 2000); // 每 2 秒检查一次
+        } else {
+            alert('更新失败: ' + data.message);
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    })
+    .catch(error => {
+        alert('更新失败: ' + error);
+        btn.disabled = false;
+        btn.textContent = originalText;
+    });
+}
+
+// 补齐历史数据
+function manualCatchup() {
+    const startDate = prompt('请输入起始日期（格式：YYYY-MM-DD，例如：2025-12-01）\n留空则不限制日期，抓取所有历史文章', '');
+    const maxPages = prompt('请输入最大抓取页数（默认：100）', '100');
+
+    if (maxPages === null) {
+        return;
+    }
+
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ 补齐中...';
+
+    const autoScore = document.getElementById('auto-score').checked;
+
+    fetch('/catchup_data', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            start_date: startDate || null,
+            max_pages: parseInt(maxPages) || 100,
+            mode: 0,
+            auto_score: autoScore
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 轮询检查更新是否完成
+            let checkCount = 0;
+            const maxChecks = 300; // 最多检查 300 次（约 10 分钟，补齐数据可能需要更长时间）
+            const checkInterval = setInterval(() => {
+                checkCount++;
+                fetch('/stats')
+                    .then(response => response.json())
+                    .then(stats => {
+                        // 显示更新进度
+                        btn.textContent = `⏳ 补齐中... (${checkCount * 2}s)`;
+
+                        // 如果检查次数超过限制，停止轮询并刷新
+                        if (checkCount >= maxChecks) {
+                            clearInterval(checkInterval);
+                            alert('补齐已完成，正在刷新页面...');
+                            location.reload();
+                        }
+                    })
+                    .catch(() => {
+                        // 如果出错，停止轮询并刷新
+                        clearInterval(checkInterval);
+                        location.reload();
+                    });
+            }, 2000); // 每 2 秒检查一次
+        } else {
+            alert('补齐失败: ' + data.message);
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    })
+    .catch(error => {
+        alert('补齐失败: ' + error);
+        btn.disabled = false;
+        btn.textContent = originalText;
+    });
+}
+
+        // 切换已读状态
+        function toggleRead(link, checkbox) {
+            const readStatus = checkbox.checked ? 1 : 0;
+
+            fetch('/toggle_read', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    link: link,
+                    read: readStatus
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadStats();
+                    // 更新卡片样式
+                    const articleCard = checkbox.closest('.article-card');
+                    if (readStatus) {
+                        articleCard.classList.remove('unmarked');
+                        articleCard.classList.add('marked');
+                    } else {
+                        articleCard.classList.remove('marked');
+                        articleCard.classList.add('unmarked');
+                    }
+                }
+            });
+        }
+
+        // 筛选文章
+        function filterArticles(filter) {
+            const url = new URL(window.location);
+            url.searchParams.set('show_marked', filter);
+            url.searchParams.set('page', '1');  // 重置到第一页
+            window.location.href = url.toString();
+        }
+
+        // 跳转到指定页
+        function goToPage(pageNum) {
+            const url = new URL(window.location);
+            url.searchParams.set('page', pageNum);
+            window.location.href = url.toString();
+        }
+
+        // AI 评分
+        function evaluateArticle(link, title) {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '⏳ 评分中...';
+
+            fetch('/evaluate_article', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    link: link,
+                    title: title
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 提取总分和评价，支持嵌套结构
+                    let overallScore = 0;
+                    let summary = '';
+                    const result = data.result;
+
+                    if (result.overall_score) {
+                        overallScore = result.overall_score;
+                        summary = result.summary || '';
+                    } else if (result['综合评价']) {
+                        overallScore = result['综合评价'].overall_score;
+                        summary = result['综合评价'].summary || '';
+                    }
+
+                    // 评分完成，刷新页面更新按钮状态
+                    location.reload();
+                } else {
+                    alert('评分失败: ' + data.message);
+                    btn.disabled = false;
+                    btn.textContent = 'AI 评分';
+                }
+            })
+            .catch(error => {
+                alert('评分失败: ' + error);
+                btn.disabled = false;
+                btn.textContent = 'AI 评分';
+            });
+        }
+
+        // 显示评分详情
+        function showScoreDetails(link) {
+            // 从数据库获取评分详情
+            fetch(`/article_score?link=${encodeURIComponent(link)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.score_details) {
+                        const details = JSON.parse(data.score_details);
+                        let overallScore = 0;
+                        let summary = '';
+
+                        // 提取总分和评价，支持嵌套结构
+                        if (details.overall_score) {
+                            overallScore = details.overall_score;
+                            summary = details.summary || '';
+                        } else if (details['综合评价']) {
+                            overallScore = details['综合评价'].overall_score;
+                            summary = details['综合评价'].summary || '';
+                        }
+
+                        // 构建评分详情 HTML
+                        let detailsHtml = `
+                            <div class="score-overview">
+                                <div class="score-circle">
+                                    <span class="score-number">${overallScore}</span>
+                                    <span class="score-label">总分</span>
+                                </div>
+                                <div class="score-summary">
+                                    <h3>综合评价</h3>
+                                    <p>${summary || '暂无评价'}</p>
+                                </div>
+                            </div>
+                            <div class="score-dimensions">
+                                <h3>各维度得分</h3>
+                        `;
+
+                        // 添加文章概述
+                        if (details['文章概述']) {
+                            detailsHtml += `
+                                <div class="dimension-item article-summary">
+                                    <div class="dimension-header">
+                                        <span class="dimension-name">📝 文章概述</span>
+                                    </div>
+                                    <div class="dimension-comment">${details['文章概述']}</div>
+                                </div>
+                            `;
+                        }
+
+                        // 遍历各维度评分
+                        for (const [dimension, info] of Object.entries(details)) {
+                            if (dimension === '综合评价') continue;
+
+                            if (typeof info === 'object' && info !== null) {
+                                const score = info.score;
+                                const comment = info.comment || '';
+                                if (score !== undefined) {
+                                    detailsHtml += `
+                                        <div class="dimension-item">
+                                            <div class="dimension-header">
+                                                <span class="dimension-name">${dimension}</span>
+                                                <span class="dimension-score">${score}/5</span>
+                                            </div>
+                                            ${comment ? `<div class="dimension-comment">${comment}</div>` : ''}
+                                        </div>
+                                    `;
+                                }
+                            } else if (typeof info === 'number') {
+                                detailsHtml += `
+                                    <div class="dimension-item">
+                                        <div class="dimension-header">
+                                            <span class="dimension-name">${dimension}</span>
+                                            <span class="dimension-score">${info}/5</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                        }
+
+                        detailsHtml += '</div>';
+
+                        document.getElementById('score-details-content').innerHTML = detailsHtml;
+                        document.getElementById('score-modal').style.display = 'block';
+                    } else {
+                        alert('无法获取评分详情');
+                    }
+                })
+                .catch(error => {
+                    alert('获取评分详情失败: ' + error);
+                });
+        }
+
+        // 关闭评分详情弹窗
+        function closeScoreModal() {
+            document.getElementById('score-modal').style.display = 'none';
+        }
+
+        // 点击弹窗外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('score-modal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // 加载文章笔记
+        function loadNote(link, index) {
+            fetch(`/get_note?link=${encodeURIComponent(link)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const noteDisplay = document.getElementById(`note-display-${index}`);
+                    const noteEditor = document.getElementById(`note-editor-${index}`);
+                    const noteTextarea = document.getElementById(`note-textarea-${index}`);
+                    const deleteBtn = noteEditor.querySelector('.delete-note-btn');
+                    
+                    if (data.success && data.note) {
+                        // 显示笔记内容
+                        noteDisplay.innerHTML = `
+                            <div class="note-content">
+                                <div class="note-header">
+                                    <span class="note-label">📝 我的笔记</span>
+                                    <span class="note-time">更新于 ${formatTime(data.note.updated_at)}</span>
+                                </div>
+                                <div class="note-text">${escapeHtml(data.note.content)}</div>
+                            </div>
+                        `;
+                        noteDisplay.style.display = 'block';
+                        noteTextarea.value = data.note.content;
+                        deleteBtn.style.display = 'block';
+                    } else {
+                        noteDisplay.innerHTML = '';
+                        noteDisplay.style.display = 'none';
+                        noteTextarea.value = '';
+                        deleteBtn.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('加载笔记失败:', error);
+                });
+        }
+
+        // 切换笔记编辑器
+        function toggleNoteEditor(link, index) {
+            const noteDisplay = document.getElementById(`note-display-${index}`);
+            const noteEditor = document.getElementById(`note-editor-${index}`);
+            
+            if (noteEditor.style.display === 'none') {
+                // 显示编辑器
+                noteEditor.style.display = 'block';
+                noteDisplay.style.display = 'none';
+                // 加载笔记内容
+                loadNote(link, index);
+            } else {
+                // 隐藏编辑器
+                noteEditor.style.display = 'none';
+                noteDisplay.style.display = 'block';
+                // 重新加载笔记显示
+                loadNote(link, index);
+            }
+        }
+
+        // 保存笔记
+        function saveNote(link, index) {
+            const noteTextarea = document.getElementById(`note-textarea-${index}`);
+            const content = noteTextarea.value.trim();
+            const btn = event.target;
+            const originalText = btn.textContent;
+
+            btn.disabled = true;
+            btn.textContent = '⏳ 保存中...';
+
+            fetch('/save_note', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    link: link,
+                    content: content
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 重新加载笔记显示
+                    loadNote(link, index);
+                    // 隐藏编辑器
+                    document.getElementById(`note-editor-${index}`).style.display = 'none';
+                    document.getElementById(`note-display-${index}`).style.display = 'block';
+                } else {
+                    alert('保存失败: ' + data.message);
+                }
+                btn.disabled = false;
+                btn.textContent = originalText;
+            })
+            .catch(error => {
+                alert('保存失败: ' + error);
+                btn.disabled = false;
+                btn.textContent = originalText;
+            });
+        }
+
+        // 取消编辑笔记
+        function cancelNote(index) {
+            // 隐藏编辑器
+            document.getElementById(`note-editor-${index}`).style.display = 'none';
+            document.getElementById(`note-display-${index}`).style.display = 'block';
+        }
+
+        // 删除笔记
+        function deleteNote(link, index) {
+            if (!confirm('确定要删除这条笔记吗？')) {
+                return;
+            }
+
+            fetch('/delete_note', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    link: link
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 重新加载笔记显示
+                    loadNote(link, index);
+                    // 隐藏编辑器
+                    document.getElementById(`note-editor-${index}`).style.display = 'none';
+                    document.getElementById(`note-display-${index}`).style.display = 'block';
+                } else {
+                    alert('删除失败: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('删除失败: ' + error);
+            });
+        }
+
+        // 格式化时间
+        function formatTime(timeStr) {
+            if (!timeStr) return '';
+            const date = new Date(timeStr);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML.replace(/\n/g, '<br>');
+        }
+
+        // 页面加载时获取统计数据和服务状态
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadStatus();
+            
+            // 加载所有文章的笔记
+            const articleCards = document.querySelectorAll('.article-card');
+            articleCards.forEach((card, index) => {
+                const link = card.querySelector('.article-title a').href;
+                loadNote(link, index + 1);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+requests
+beautifulsoup4
+schedule
+Flask
+openai
+python-dotenv
